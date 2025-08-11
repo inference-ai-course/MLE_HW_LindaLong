@@ -1,0 +1,33 @@
+MTFx Group - Daily Exchange Rates
+=====================================
+Date: 9 Aug 2025
+Base Currency: CAD (Canadian Dollar)
+Source: https://www.mtfxgroup.com/tools/daily-exchange-rate-lookup/
+Scraped on: Sunday, August 10, 2025
+
+Exchange Rates (CAD as base currency):
+=====================================
+
+Currency Code | Currency Name          | CAD Per Unit | Units Per CAD
+------------- | ---------------------- | ------------ | -------------
+USD           | US Dollar             | 1.3754       | 0.7270
+EUR           | Euro                  | 1.6021       | 0.6242
+GBP           | Pound Sterling        | 1.8473       | 0.5413
+AUD           | Australian Dollar     | 0.8975       | 1.1142
+CHF           | Swiss Franc           | 1.6990       | 0.5886
+CNY           | Chinese Yuan Renminbi | 0.1915       | 5.2212
+CZK           | Czech Koruna          | 0.0655       | 15.2558
+DKK           | Danish Kroner         | 0.2145       | 4.6614
+HKD           | Hong Kong Dollar      | 0.1752       | 5.7072
+HRK           | Croatia Kuna          | 0.2125       | 4.7054
+
+Analysis Summary:
+================
+• Total currencies tracked: 10
+• Strongest currency against CAD: GBP (1.8473 CAD per unit)
+• Weakest currency against CAD: CZK (0.0655 CAD per unit)
+• Major currencies (USD, EUR, GBP) all require more than 1 CAD to purchase 1 unit
+• Emerging market currencies (CNY, CZK, HKD, HRK) can be purchased for less than 1 CAD per unit
+
+Note: These rates are for informational purposes and may not reflect real-time trading rates.
+Data automatically scraped and processed using Claude + Puppeteer automation.
