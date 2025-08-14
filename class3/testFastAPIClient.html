@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Upload Audio and Get Response</title>
+</head>
+<body>
+  <h2>Upload Audio and Get Response Audio</h2>
+  <form id="audioForm">
+    <input type="file" id="audioInput" name="file" accept=".wav,.mp3" required>
+    <button type="submit">Send</button>
+  </form>
+  <div id="audioSection" >
+    <button id="playBtn">Play Response Audio</button>
+    <audio id="responseAudio" ></audio>
+  </div>
+  <div id="msg">Please choose your file first</div>    
+
+
+  <script>
+    const audioForm = document.getElementById('audioForm');
+    const audioInput = document.getElementById('audioInput');
+    const audioSection = document.getElementById('audioSection');
+    const playBtn = document.getElementById('playBtn');
+    const responseAudio = document.getElementById('responseAudio');
+    const msgDiv = document.getElementById('msg');
+
+
+
+    audioForm.onsubmit = async function(e) {
+
+      e.preventDefault();
+      const formData = new FormData();
+      formData.append('file', audioInput.files[0]);
+      
+      msgDiv.innerText = "Sending request...";
+
+      const response = await fetch('http://localhost:8000/chat/', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        msgDiv.innerText = "Response comes";
+        const audioBlob = await response.blob(); // <-- This line is needed!
+        const audioUrl = URL.createObjectURL(audioBlob);
+        responseAudio.src = audioUrl;
+        msgDiv.innerText = "Response audio is ready! Click play to listen.";
+
+        //audioSection.style.display = 'block';
+      } else {
+        alert('Error: ' + response.status);
+        msgDiv.innerText = "Error: " + response.status;
+      }
+    };
+
+    playBtn.onclick = function() {
+      responseAudio.play();
+    };
+  </script>
+</body>
+</html>
