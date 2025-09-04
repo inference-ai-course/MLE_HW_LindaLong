@@ -1,0 +1,1753 @@
+arXiv:2508.21788v1 [cs.CL] 29 Aug 2025
+
+Going over Fine Web with a Fine-Tooth Comb:
+Technical Report of Indexing Fine Web for Problematic Content Search
+and Retrieval
+
+Inés Altemir Marinas “, Anastasiia Kucherenko”, Andrei Kucharavy*
+'Bcole Polytechnique Fédérale de Lausanne, Switzerland
+*Institute of Entrepreneurship and Management, HES-SO Valais-Wallis, Switzerland
+Institute of Informatics, HES-SO Valais-Wallis, Switzerland
+
+Abstract
+
+Large language models (LLMs) rely heavily on
+web-scale datasets like Common Crawl, which
+provides over 80% of training data for some
+modern models. However, the indiscriminate
+nature of web crawling raises challenges in data
+quality, safety, and ethics. Despite the critical
+importance of training data quality, prior re-
+search on harmful content has been limited to
+small samples due to computational constraints.
+This project presents a comprehensive frame-
+work for indexing and analyzing entire LLM
+training datasets using an ElasticSearch-based
+pipeline. We apply it to SwissAI’s FineWeb-2
+corpus (1.5TB, four languages), achieving fast
+query performance—most searches in millisec-
+onds, all under 2 seconds. Our work demon-
+strates the feasibility of comprehensive, real-
+time dataset analysis, offering practical tools
+for safer, more accountable AI systems.
+
+1 Introduction
+
+The capabilities of large language models Brown
+et al. (2020)), Touvron et al. (2023), Grattafiori
+et al. (2024), Abdin et al. (2024), Bubeck et al.
+(2023) are primarily derived from pretraining
+on extense web-scale datasets such as Common
+Crawl and derivates C4 Raffel et al. (2020) and
+FineWeb Penedo et al. (2024). These web-scraped
+datasets have become the de facto standard for
+internet-scale pretraining datasets, as some models
+such as GPT-3 Brown et al. (2020) had more than
+80% of its tokens coming from Common Crawl.
+
+However, the scale that enables these remark-
+able capabilities also introduces significant chal-
+lenges. Web-mined corpora inevitably contain sub-
+stantial amounts of undesirable content, including
+hate speech, sexually explicit material, misinforma-
+tion, copyrighted data, and personally identifiable
+informationLuccioni and Viviano (2021), Mendu
+
+‘The main contributing author
+
+et al. (2025), which propagate into LLM output. Re-
+search has consistently demonstrated that such con-
+tent persists even after conventional filtering pro-
+cedures (such as perplexity-based filtering), with
+studies finding that 2-6% of web pages in Com-
+mon Crawl contain hate speech and approximately
+2% contain sexually explicit content (Luccioni and
+Viviano (2021)).
+
+The implications of this contamination vary
+significantly across different model deployment
+paradigms. While API-only models can implement
+generation-time filtering to mitigate harmful out-
+puts, this approach becomes ineffective for open-
+weights models where the full model parameters
+are publicly available. For open-source models,
+comprehensive training data mapping and analysis
+represents the primary defense against propagating
+problematic content, making preemptive dataset
+governance essential rather than optional. This
+fundamental difference underscores the critical im-
+portance of thorough training data analysis for the
+growing ecosystem of open-weights language mod-
+els.
+
+The personally identifiable information present
+in these large-scale datasets poses a severe privacy
+risk, as demonstrated by Carlini et al. (2021), who
+showed that adversaries can perform training data
+extraction attacks to recover individual training
+examples—including personally identifiable infor-
+mation like names, phone numbers, and email ad-
+dresses—by simply querying large language mod-
+els like GPT-2. These privacy concerns are further
+compounded by copyright and content authenticity
+challenges that have emerged from the indiscrimi-
+nate use of web-scraped data. The legal and ethi-
+cal implications of using massive internet-scraped
+datasets without clear rights or consent have materi-
+alized in high-profile cases, with major content cre-
+ators like the New York Times now actively block-
+ing OpenAI’s web crawler and Common Crawl
+from accessing their pages using robots.txt to pre-
+
+
+vent unauthorized use of their content in AI training
+(Baack, 2024). Simultaneously, the infiltration of
+misinformation into training datasets represents an-
+other critical vulnerability. Malicious actors can
+deliberately inject false or misleading information
+into web content that subsequently gets incorpo-
+rated into model training data, potentially compro-
+mising the reliability of AI systems at scale. An
+example of this is the Moscow-based disinforma-
+tion network “Pravda’’, who with 3,600,000 articles
+in 2024 have flooded search results and web web
+crawlers with pro-Kremlin discourse! .
+
+These interconnected challenges—privacy viola-
+tions, copyright infringement, and data contamina-
+tion—underscore the urgent need for transparent,
+searchable, and auditable data pipelines.
+
+A critical limitation of existing research on train-
+ing data quality is the reliance on small-scale sam-
+pling due to computational constraints. Luccioni
+and Viviano (2021) analyzed only 1% of Common
+Crawl files (approximately 81 GB) due to "hard-
+ware constraints", while Mendu et al. (2025) ex-
+amined | million random web pages for their com-
+prehensive harm taxonomy development. While
+these samples may be statistically representative,
+the limitation to subsets potentially obscures impor-
+tant patterns in harmful content distribution, rare
+but significant toxic clusters, and domain-specific
+bias patterns that emerge only at scale.
+
+To address these critical challenges, this project
+develops a comprehensive ElasticSearch-based
+framework for indexing and searching complete
+LLM training datasets rather than representative
+samples. The indexing pipeline ingests large train-
+ing datasets and builds searchable indexes that sup-
+port multiple query paradigms: exact phrase match-
+ing for precise content identification, approximate
+matching through configurable fuzzy search for
+handling variations and typos, and semantic similar-
+ity search for discovering conceptually related con-
+tent. These capabilities are unified through additive
+query logic, enabling complex boolean combina-
+tions that can simultaneously search for exact terms,
+semantic concepts, and fuzzy variants—creating
+an extremely powerful tool for ensuring LLM user
+safety and comprehensive dataset governance.
+
+Unlike previous research constrained by compu-
+tational limitations, our framework enables sys-
+tematic content analysis across entire multilin-
+
+‘https: //www.newsguardtech.com/special-repor
+
+ts/moscow-based-global-news-network- infected-wes
+tern-artificial-intelligence-russian-propaganda/
+
+gual training corpora. The urgency of such
+comprehensive-scale analysis is underscored by the
+multilingual nature of modern LLM training, where
+harmful content patterns may vary significantly
+across languages and cultural contexts—variations
+that sampling-based approaches cannot reliably
+capture. While considerable research has focused
+on post-training alignment techniques, significantly
+less attention has been devoted to the foundational
+role of training data quality in ensuring model
+safety, making scalable indexing infrastructure es-
+sential for responsible AI development.
+
+Our work specifically addresses this gap by
+applying our framework to SwissAI’s multilingual
+FineWeb-2 corpus, demonstrating comprehensive
+exploration capabilities that sampling-based
+approaches cannot reliably access at scale. The
+contributions of this work are threefold: (1) the
+development of a scalable indexing infrastructure
+that overcomes computational barriers limiting pre-
+vious research to small samples, (2) demonstration
+of the system’s efficiency through targeted searches
+across multiple query types that reveal problematic
+content across languages in the complete training
+corpus, and (3) the provision of production-ready
+tools for ongoing dataset governance at the scale
+required for modern LLM development.
+
+This framework positions Switzerland and its
+SwissAI model as leaders in responsible AI devel-
+opment, demonstrating how comprehensive train-
+ing data governance can ensure AI systems are built
+on well-understood, ethically-sourced, and legally-
+compliant datasets—goals that align closely with
+Switzerland’s longstanding values. By developing
+the tools and methodologies to thoroughly under-
+stand and audit training data, we can ensure that
+the next generation of AI systems serves society
+while respecting privacy, copyright, and safety prin-
+ciples. Crucially, our open indexing infrastructure
+enables independent third parties to audit both the
+training data and resulting models, fostering the
+kind of transparent, verifiable AI development that
+can build public trust and establish international
+standards for responsible AI governance.
+
+2 ElasticSearch
+
+Elasticsearch (ES) is a distributed, RESTful search
+and analytics engine built on Apache Lucene.
+
+For the distributed character of ES, we can run an
+ES instance in discovery. type=single-node or
+
+
+discovery. type=multi.node, where multi-node
+configuration allows ES to discover other nodes
+when forming a cluster and allows other nodes to
+join the cluster later. (explain what a cluster is).
+In multi-node mode, the data is automatically split
+across multiple nodes (servers) in a cluster. Each
+index is divided into "shards" - independent pieces
+that can be placed on different machines. For now,
+we have explored the single-node configuration
+only, as the multi-node approach is pending on
+how feasible the true clustering across SLURM-
+managed nodes can be (4.2).
+
+2.1 General overview of pipeline
+
+¢ Text processing stage: Implements a multi-
+analyzer approach that processes the ’text’
+field through different levels of linguistic pro-
+cessing - from heavily normalized text (lower-
+case, ASCII folding, stemming, stopword re-
+moval) to minimally processed exact matches.
+URL metadata is extracted and indexed for
+document provenance tracking. The imple-
+mentation is able to handle both English and
+multilingual datasets
+
+¢ Multi-field indexing strategy: Creates three
+searchable versions of each text document:
+(1) a main analyzed field optimized for full-
+text search, (2) a keyword field for exact
+string matching, and (3) an exact field that
+preserves original structure while handling
+HTML normalization. This enables different
+search strategies from fuzzy matching to pre-
+cise phrase detection.
+
+¢ Inverted index construction: Elasticsearch
+builds optimized inverted indexes mapping
+each unique term to all documents contain-
+ing it, including positional information. This
+enables both term-based queries (finding doc-
+uments with any search terms) and phrase-
+based queries (finding exact word sequences),
+with configurable relevance scoring using TF-
+IDF and BM25 algorithms.
+
+¢ Distributed storage and processing: The
+system uses a N-shard configuration with no
+replicas for optimal indexing performance.
+Compression and refresh interval optimiza-
+tions further enhance throughput during bulk
+operations. Larger datasets and data directo-
+ries are splitted, enabling parallel indexing
+
+processing across multiple workers. A merg-
+ing operation is later executed to create a uni-
+fied unique index.
+
+« Advanced query execution engine: Supports
+six distinct query types ranging from simple
+term matching to complex boolean combina-
+tions and fuzzy matching.
+
+2.2 Indexing operation
+
+The Elasticsearch indexing component processes
+large-scale parquet datasets containing web-
+scraped text data and transforms them into search-
+able indexes. The pipeline is designed to handle
+massive datasets while maintaining memory effi-
+ciency and enabling distributed processing.
+
+The indexing operation begins by streaming par-
+quet files to prevent memory accumulation, extract-
+ing text content along with metadata (including
+URLs for provenance tracking). Each document
+undergoes multi-level text processing through con-
+figurable analyzers that create different searchable
+representations - from heavily normalized text op-
+timized for semantic search to exact matches pre-
+serving original structure.
+
+The system employs a distributed architecture
+with configurable sharding and supports parallel
+processing through file-range indexing, allowing
+multiple workers to process different portions of
+the dataset simultaneously. Performance optimiza-
+tions include bulk indexing with configurable batch
+sizes, and dynamic refresh interval adjustments
+to maximize throughput during large-scale opera-
+tions.This optimization is essential due to the time
+and memory constraints imposed on Clariden jobs.
+
+Advanced Elasticsearch cluster management ca-
+pabilities enable merging of distributed indexes
+through a multi-cluster approach, where individual
+data directories run separate Elasticsearch instances
+that are then combined using remote _reindex op-
+erations. This ensures data integrity while scaling
+to handle datasets that exceed single-node capacity
+limitations.
+
+2.2.1 Parameters tuning
+
+The indexing operation is based around the
+elasticsearch.helpers.parallel_bulk func-
+tion, which enables concurrent bulk indexing of
+documents to Elasticsearch by distributing bulk re-
+quests across multiple threads
+
+Performance optimization in runtime and mem-
+ory usage requires careful tuning of multiple inter-
+dependent parameters.
+
+
+The thread count is the size of the threadpool to
+use for the bulk requests, and it should not exceed
+available CPU cores. Each thread count maintains
+its own request queue, multiplying the memory
+usage. In most of our experimental runs, we run
+with --cpus-per-task=8. Hihger values improve
+the parallel processing capacity.
+
+The chunk size is the number of documents
+bundled in one bulk request to ES. A too small
+value may imply more HTTP overhead and reduce
+throughput. A too large value will increase memory
+pressure, causing potential timeouts.
+
+The max chunk bytes is the maximum size of
+individual bulk requests. Larger chunks will reduce
+HTTP overhead, but also require more RAM per
+thread.
+
+The queue size is size of the task queue between
+the main thread (producing chunks to send) and
+the processing threads. (values tested have been
+between 2 - 8)
+
+The parameter tuning analysis focuses on the
+FineWeb CC-MAIN-2024-51 7 dataset indexing
+operation. Computing the average size of the doc-
+uments, let’s call it avg_doc_size, along with
+thread_count, chunk_size and queue_size, we
+can estimate this memory usage. For starters,
+we have a first constraint on chunk_size, as
+this is dependent on the max_chunk_size and
+the avg_doc_size. Therefore, the division of
+these two values gives us an upper bound for
+chunk_size.
+
+. max_chunk_size
+chunk_size << —— __—+#£§_ (1)
+avg_doc_size
+In our case, with avg_doc_size=4KB, and
+setting max_chunk_size to S50MB, we get
+chunk_size=12500.
+
+The values of thread_count and queue_size
+
+can be guided by our desired memory usage.
+
+2.2.2 Tests
+
+We seek to gain insight into the scaling behav-
+ior of the indexing process. Using the FineWeb
+CC-MAIN-2024-51 dataset, we indexed portions
+of increasing size—2GB, 178GB, and the full
+363GB—and observed running times of 391s,
+18,000s, and 31,094s respectively.
+
+Table 1 summarizes the performance metrics
+of different indexing configurations applied to the
+
+*https: //huggingface.co/datasets/HuggingFaceF
+W/f ineweb/viewer/CC-MAIN- 2024-51
+
+Fineweb CC-MAIN-2024-51 dataset (original size:
+363GB, available on Hugging Face). We report the
+running time, peak memory usage, and index size
+obtained when varying CPU thread count, chunk
+size, and queue size. These results help illustrate
+the trade-offs between speed, memory consump-
+tion, and index size under different parallelization
+settings. We show that increasing the thread count
+and queue size generally reduces running time, but
+at the cost of significantly higher peak memory us-
+age. Conversely, configurations with fewer threads
+and smaller queues yield lower memory consump-
+tion, though with longer processing times.
+
+2.2.3. Indexing SwissAI Filtered Fineweb 2
+dataset
+
+As the objective of this project is to develop a tool
+capable of analyzing and searching large-scale
+training datasets, and to apply such a tool in the
+context of the ongoing development of the SwissAI
+large language model (LLM), we present an initial
+indexing analysis intended as a sample case study
+demonstrating the tool’s potential use.
+
+This analysis serves as a first step towards illus-
+trating how the tool can support the inspection and
+evaluation of training data in practice.
+
+The SwissAI project has produced a filtered ver-
+sion of the Fineweb 2 dataset as part of the pre-
+training data recipe. We index pertinent sub-
+datasets of the SwissAI FineWeb 2 dataset, specif-
+ically focusing on the Italian (ita_Latn), Ger-
+man (deu_Latn), Swiss German (gsw_Latn), and
+French (fra_Latn) subsets, as these correspond to
+the official languages of Switzerland. The sizes of
+these indexed datasets are: 329 GB for ita_Latn,
+634 GB for deu_Latn, 113 MB for gsw_Latn, and
+515 GB for fra_Latn.
+
+The parallel processing architecture successfully
+indexed 1.5TB+ of multilingual web content us-
+ing file range partitioning, simultaneous batch pro-
+cessing, and remote reindex merging. The Ger-
+man dataset (634GB) demonstrated optimal per-
+formance with 16-shard configuration, achieving
+79.25 GB/hour throughput and nearly 8-hour total
+processing time. In contrast, the French dataset
+(515GB) suffered from suboptimal 7-shard design,
+resulting in 2.3x slower processing (34.3 GB/hour)
+and violating Elasticsearch’s 50GB/shard recom-
+mendation. Peak memory usage remained below
+5.17GB across all operations, with batch sizes of
+100-125 parquet files proving optimal. All details
+
+
+
+CPUs Chunk size Thread count Queue size Runningtime Peak memory Index size
+(s) (GB) (GB)
+
+8 12500 2 2 34.634 1.55 612.01
+
+8 12500 4 2 33.704 2.81 595.60
+
+8 12500 4 4 31.427 2.59 621.69
+
+8 12500 4 8 34.433 3.32 615.14
+
+8 12500 8 8 31.094 3.76 604.31
+
+16 12500 16 4 33.227 7.79 607.59
+
+Table 1: Performance metrics of runtime and peak memory usage for various index parameters configurations
+
+can be found in Table 2. The indexing parame-
+ters used for all these indexing operation was the
+optimal configuration found in 2.2.1.
+
+The indexing pipeline utilized optimized param-
+eters derived from systematic tuning, including:
+custom text analyzers, compressed storage with
+best_compression codec and disabled refresh
+intervals during bulk indexing.
+
+This architecture successfully indexed over
+1.5TB of multilingual web content while main-
+taining sub-6GB memory footprints per process,
+demonstrating the viability of Elasticsearch for
+large-scale document retrieval systems in resource-
+constrained environments.
+
+2.2.4 Upper limit of indexable information
+
+With the current achieved optimization, the practi-
+cal upper limit for single batch-processings appears
+to be approximately around SOOGB. (respecting
+Clariden’s job time limit).
+
+Regarding ElasticSearch’s shard constraints, it
+imposes fundamental limitations on index scala-
+bility, with a maximum number of documents per
+shard ( 2.1 billion) and a recommended shard size:
+50GB maximum, 200M documents optimal
+
+2.2.5 Improvements
+
+¢ Dynamic sharding configuration to achieve
+optimal data distribution per shard based on
+dataset characteristics
+
+¢ Adaptive chunk sizing in parallel batch pro-
+cessing operations to optimize the balance
+between maximum chunk size and average
+document size
+
+¢ Chunk size parameter tuning to determine op-
+timal values for maximum chunk bytes based
+on dataset characteristics in single-process
+jobs
+
+¢ Resource monitoring for memory usage and
+bandwidth utilization to optimally adjust
+queue size and thread count parameters
+
+Regarding production deployment enhance-
+ments, enabling the memory mapping functionality
+(as discussed in 4.1.2) would provide for enhanced
+performance. Additionally, managing parallel job
+submissions in SLURM through automated array
+job would prove useful.
+
+An ablation regarding the memory usage scenar-
+ios for different total memory allocation strategies
+
+2.3 Search operation
+
+The Elasticsearch search component provides
+a comprehensive query execution framework
+designed to perform diverse search operations
+on large-scale indexed web content. The system
+enables systematic exploration of massive text
+corpora through multiple search strategies, each
+optimized for different information retrieval
+scenarios.
+
+In the current set-up, the search system takes
+predefined collections of search terms provided by
+a user (such as misinformation keyword lists or
+domain-specific vocabularies in our test case) and
+executes queries for each term against the com-
+plete indexed dataset. This systematic approach
+processes entire keyword files containing hundreds
+or thousands of terms, ensuring exhaustive cover-
+age across millions of documents. The pipeline
+handles high-volume query execution through op-
+timized connection management and configurable
+timeouts designed for large-scale index operations.
+Beyond returning simple hit counts, the pipeline ex-
+tracts highlighted text snippets from matching doc-
+uments, capturing the actual context where search
+terms appear. This enables us to examine not only
+whether specific content exists within the corpus,
+but also how terms are used, what surrounding con-
+text they appear in, and how meaning varies across
+different documents and sources.
+
+The system tracks query execution times, hit dis-
+tributions, and relevance scoring. This monitoring
+reveals which query types work best for specific
+content domains and helps identify optimal search
+
+
+Table 2: Elasticsearch Indexing Performance for FineWeb Dataset Languages
+
+Dataset Original Size Parquet Files Batch Peak Memory Execution Time Index Size Merge Time
+(GB) (Total) Size (GB) (seconds) (GB) (minutes)
+
+25 2.38 5587 95.1
+
+25 2.74 5332 101.2
+
+25 2.84 5402 82.1
+
+25 3.56 5142 85.0
+deu_Latn 634 994 05 3.11 2819 61.0 379.8
+
+25 42 410 18.6
+
+24 2.22 572 23.4
+
+24 52 298 17.0
+
+00 4.43 14859 70.0
+
+00 5.17 20371 69.2
+
+00 4.42 15014 69.0
+
+- 98 441 11774 59.8
+fra_Latn 515 785 98 400 5775 36.2 571.4
+
+98 2.61 2480 21.0
+
+98 2.06 2152 17.8
+
+93 55 040 9.1"
+ita_Latn 329 486 Single 3.94 17148 213.0 -
+gsw_Latn 0.113 1 Single 92 25.48 0.35 -
+
+approaches for different research objectives. The
+relevance scoring uses BM25 (Best Matching 25)
+as its default algorithm, which is an improved ver-
+sion of TF-IDF that addresses the saturation prob-
+lem where term frequency has diminishing returns
+and incorporates document length normalization.
+BM25 calculates relevance scores by combining
+term frequency (how often query terms appear in a
+document), inverse document frequency (how rare
+terms are across the corpus), and document length
+normalization.
+
+2.3.1 Type of queries possible
+
+The index uses a web_content_analyzer that ap-
+plies:
+
+¢ HTML stripping: Removes HTML tags from
+content
+
+¢ Standard tokenization: Splits text into tokens
+
+¢ Lowercase normalization: Converts all text to
+lowercase
+
+¢ ASCII folding: Converts accented characters
+(ée)
+¢ English stop word removal: Removes com-
+
+mon words (the, and, of, etc.)
+
+¢ English stemming: Reduces words to root
+forms (running run, climates climat)
+
+This preprocessing significantly affects how
+queries match against indexed content.There is
+also a exact_match_analyzer available, which
+does not perform ascii folding, stop word removal
+or stemming in order to identify pure verbatim.
+
+The match query match_query implements OR
+logic between terms, applying full-text analysis to
+both query and indexed content. For single-word
+queries like “climate,” the term is analyzed and
+stemmed to “climat,’ which matches documents
+containing variations like “climate,” “climates,” or
+“climatic.” BM25 scoring is used for relevance
+ranking. For multi-word queries such as “climate
+change,” each word is analyzed separately, result-
+ing in a query for “climat” OR “chang.” Documents
+need to contain only one of the terms to match, and
+word order is irrelevant; “change climate” yields
+the same results. Documents containing both terms
+receive higher relevance scores.
+
+The match phrase query match_phrase_query
+requires exact phrase matching, with configurable
+proximity tolerance. For single-word queries, it
+behaves like the match query. For multi-word
+queries like “climate change,” the terms must ap-
+pear in the exact order after analysis. For exam-
+ple, “climat” must immediately precede “chang”
+when the slop is 0, preserving phrase integrity. The
+MATCH_PHRASE_SLOP parameter controls tolerance
+
+
+for word proximity; slop 0 enforces exact match-
+ing, slop 1 allows one intervening word, and slop
+2 allows two. This means slop | can match “cli-
+mate and change,” while slop 2 can match “climate
+action and change.”
+
+The term query exact term_query_exact by-
+passes text analysis entirely, searching for exact
+tokens using the text.exact field. For single-word
+queries, no stemming or analysis is applied, so
+searching for “climate” only finds the exact token
+“climate,” excluding variations like “climates” or
+“climatic.” This is useful for exact word forms,
+proper nouns, or technical terms. Term queries
+do not support multi-word inputs and will return
+empty results for such cases, as they operate on
+single tokens only.
+
+The fuzzy query fuzzy_query handles typo-
+graphical errors and variations through edit dis-
+tance calculations. For single-word queries, it uses
+Levenshtein distance to find similar terms within a
+tolerance, typically allowing one or two character
+edits. For example, searching for “climat” could
+match “climate” or “climax” if within tolerance.
+Text analysis still applies. For multi-word queries,
+the system falls back to a multi-match query with
+fuzziness enabled per term, using AND or OR op-
+erators. This approach is more computationally ex-
+pensive and can match inputs like “changge” with
+“change” or “cliamte” with “climate.”
+
+The boolean must query bool_must_query cre-
+ates structured boolean queries with configurable
+logic and scoring control. For single-word queries,
+it creates a single must clause, similar to a match
+query with the AND operator but allowing com-
+plex scoring. For multi-word queries, it creates
+separate match clauses where all terms must be
+satisfied, up to a configurable maximum (default
+is three terms). The BOOL_MUST_OPERATOR param-
+eter controls term relationships, where “and” re-
+quires all terms and “or” allows partial matches
+with minimum_should_match . This provides fine-
+tuned control over precision and recall.
+
+2.3.2 Verbatim query length search time
+
+The purpose of this experiment is to evaluate the
+performance of match phrase queries when applied
+to an index with varying query segment length.
+Specifically, this experiment seeks to explore the
+feasibility of using verbatim phrase matching as
+a method for detecting potential memorization
+and regurgitation of training data passages by the
+model.
+
+Query Avg(ms) Med(ms) Std(ms) Hit Rate (%)
+Length
+
+1 word 36.07 27.87 41.09 98.7
+
+10 15.01 7.30 14.73 100.0
+words
+
+100 55.51 40.86 35.64 100.0
+words
+
+300 100.51 105.50 20.52 99.5
+words
+
+Table 3: Query performance statistics across different
+segment lengths for the GSW index. Results show aver-
+age (Avg), median (Med), and standard deviation (Std)
+of query execution times, plus hit rates indicating suc-
+cessful query matches.
+
+To this end, we sampled random contiguous
+segments of varying lengths (1, 10, 100, and 300
+words) from the source datasets used to build the
+indexes. These segments were then issued as match
+phrase queries against the corresponding indexes.
+
+Table 3 summarizes the query performance re-
+sults. For the GSW index, the hit rate remains
+consistently high across all segment lengths, rang-
+ing from 98.7% for 1-word queries to 100% for 10-
+and 100-word queries, and 99.5% for 300-word
+queries. Query execution times exhibit the ex-
+pected trend of increasing with segment length:
+median query times range from approximately 7
+ms for 10-word queries to 105 ms for 300-word
+queries. The standard deviation of execution time
+also generally increases with query length, though
+the 300-word queries display a relatively stable la-
+tency (standard deviation of 20.52 ms), suggesting
+that longer phrases may incur a more predictable
+computational cost within this small index.
+
+Overall, these preliminary results indicate that
+match phrase queries can be executed with low la-
+tency on smaller indexes even for longer segments,
+supporting the feasibility of this method as part
+of a toolset for detecting potential memorization.
+Further experimentation on larger indexes and ad-
+ditional languages will be required to fully charac-
+terize performance and accuracy under conditions
+representative of production-scale language model
+training datasets.
+
+3 Search results on SwissAI training data
+
+We present an initial analysis intended as a sample
+case study demonstrating the tool’s potential use.
+
+
+This analysis serves as a first step towards illus-
+trating how the tool can support the inspection and
+evaluation of training data in practice.
+
+3.1 SwissAI FineWeb-2 Dataset
+
+On the German, French, Swiss German and Italian
+datsets from FineWeb-2, indexed in 2.2.3, we
+conduct searches using the Weaponized Words
+dictionary >, which provides language-specific
+lexicons of curse words, slurs, and other forms of
+toxic or discriminatory language. The motivation
+behind this analysis is to explore the presence and
+distribution of potentially harmful or offensive
+terms within the SwissAI filtered training data, and
+to validate our experimental pipeline. An example
+of the result of queries of the german lexicon of
+WeaponizedWords on the DEU index is Table 5.
+
+Here is the query configuration used for all 4 in-
+dexes to perform the queries on WeaponizedWords:
+
+{
+"execute_match_query”: true,
+"execute_match_phrase_query”: true,
+"execute_term_query_exact”: true,
+"execute_wildcard_query”: false,
+"execute_fuzzy_query”: true,
+"execute_bool_must_query”: true,
+"match_query_operator”: [
+"or"
+1,
+"match_phrase_slop”: [
+1)
+1,
+"bool_must_operator”: "or",
+"bool_must_max_words"”: 3,
+"bool_must_minimum_should_match”: ”
+50%"
+}
+
+3.2 SwissAI FineWeb-edu-score 2 dataset
+
+We index all of the SwissAI Fineweb-edu-score 2
+dataset. The dataset has undergone some filtering
+process, and is composed of 95 MAIN-CC dumps.
+As illustrated with the previous SwissAI FineWeb-
+2 dataset, we perform parallel processing of the
+95 dumps simultaenously, which render 95 source
+indexes. For these indexes, at the time of writing
+of the raport, subsequent merge stages to obtain a
+unique final index are still ongoing. We randomly
+sample 3 source indexes among these 95 to perform
+search queries upon Weaponized Words (visible in
+Table 7), a list of Obscene Words *, and a Chat-
+
+ttps://weaponizedword.org/
+ttps://github.com/LDNOOBW/List-of-Dirty-Nau
+ghty-Obscene- and-Otherwise-Bad-Words
+
+ar)
+
+GPT generated list of misinformation keywords
+(see Table 6)
+
+Further more extensive will results will be avail-
+able on the HEVS Github elasticsearch_alps
+repository.
+
+4 Deployment on ALPS Clariden -
+Technicalities
+
+This project has been deployed on Clariden, a
+vcluster within the Alps system of the CSCS, the
+Swiss National Supercomputing Centre >. The de-
+ployment process has revealed several technical
+challenges stemming from the platform’s specific
+container management approach and security con-
+straints.
+
+4.1 Container environment
+
+Clariden provides its own container environment
+through the Container Engine (CE), which is specif-
+ically designed for HPC workloads and does not
+support Docker directly. Docker is incompatible
+with Clariden due to two primary constraints: secu-
+rity concerns arising from Docker’s default shared
+read/write permissions for all users (rather than
+inheriting permissions from the user who initi-
+ated the container), and architectural incompat-
+ibility, as most Docker containers are built for
+x86/x86_64/amd64 architectures rather than the
+arm64 architecture used by Clariden.
+
+4.1.1 Docker incomptability
+
+Since Clariden does not support the direct use of
+Docker, we cannot directly pull and use the offi-
+cial Elasticsearch image from Docker Hub®. This
+also precludes the use of Docker Compose, which
+would have provided significant benefits for or-
+chestration by allowing us to compose existing ele-
+ments with ease—for example, combining an ex-
+isting Elasticsearch container with storage blocks
+and Python code in separate containers. Docker
+Compose facilitates problem isolation to individual
+containers and simplifies component updates and
+upgrades by allowing modular changes to specific
+parts of the deployment. This limitation means
+we cannot directly use the official Docker Hub im-
+age for Elasticsearch’, which introduces additional
+complexity in building, customizing, and deploying
+the container. The process requires creating custom
+OClI-compliant container images using Podman
+Shttps: //www.cscs.ch/computers/alps
+
+https: //hub.docker .com/_/elasticsearch
+Thttps://hub.docker.com/_/elasticsearch
+
+
+Index (Size) Query Type Avg Time (ms) Med Time (ms) Avg Hits Total Queries
+match_query 10.75 7.61 210.02 53
+match_phrase_query 10.71 7.84 21.34 53
+
+GSW (389MB) | term_query_exact 5.74 4.75 14.68 53
+fuzzy_query 38.45 35.00 520.35 52
+bool_query 9.46 7.46 210.02 53
+match_query 185.49 36.95 7754.94 53
+match_phrase_query 86.62 51.56 7590.2 53
+
+DEU (400GB) ‘erm_query_exact 177.06 98.71 5290.13 53
+
+uzzy_query 3462.92 3586.34 8636.56 52
+bool_query 76.97 51.94 7754.94 53
+match_query 191.45 20.03 9162.9 75
+match_phrase_query 193.11 56.44 7607.07 75
+FRA (313GB) ‘erm_query_exact 106.85 35.62 4479.76 75
+uzzy_query 2055.44 2333.66 9382.2 57
+bool_query 71.87 53.14 9162.9 715
+match_query 156.42 00.78 7359.83 24
+match_phrase_query 70.93 31.80 5887.25 24
+ITA (196GB) ‘erm_query_exact 108.91 12.44 5276.42 24
+uzzy_query 1175.49 1187.93 8754.60 20
+bool_query 41.80 32.01 7359.83 24
+
+Table 4: Query performance comparison across language indexes (and their index size). Metrics include average
+and median query times (ms), average hits per query, and total queries executed. Queries done in the respective
+
+language WeaponizedWords dataset.
+
+and Containerfile, ensuring that components inte-
+grate correctly with Clariden’s resource manage-
+ment and security policies. Furthermore, efficient
+resource utilization is critical—workloads must be
+registered within SLURM job windows, and since
+Alps is an extremely efficient computing platform
+designed for high-performance computing, compo-
+nents must be compiled against optimized libraries
+before being run at scale to maintain the platform’s
+performance standards.
+
+4.1.2 Custom container image construction
+Following the CSCS Documentation, 8 we must
+build custom OCI-compliant container images us-
+ing Podman and Containerfile. This one will in-
+clude a certain version of Elasticsearch, the cor-
+responding Elasticsearch API, and the necessary
+extra tools like curl, pyarrow, python3 and so on.
+Following, the Environment Definition File
+(EDF), a text file in the TOML format, represents
+the creation of a computing environment based on
+such container image. Environment variables de-
+fined in TOML files are not properly interpreted
+by Elasticsearch during startup, requiring runtime
+
+Shttps://confluence.cscs.ch/spaces/KB/pages/8
+68834153/Building+container+images+ontAlps
+
+configuration through command-line parameters
+or configuration files. This limitation necessitates
+passing critical Elasticsearch settings as command-
+line arguments during container startup, although
+this can be partially mitigated by using SLURM
+files tht register such arguments
+
+A major system-level constraint is the memory
+mapping limitation. Elasticsearch relies on mem-
+ory mapping (mmap) for efficient index access, re-
+quiring the kernel parameter vm.max_map_count
+to be set to at least 262,144. However, Clariden’s
+default value is 65,530, and unprivileged containers
+cannot modify kernel parameters. Without proper
+configuration, Elasticsearch fails during startup
+with:
+
+bootstrap check failure [1] of [1]
+max virtual memory areas vm.
+
+max_map_count [65530] is too low
+, increase to at least [262144]
+
+We resolve this by disabling memory mapping en-
+tirely using:
+
+node.store.allow_mmap=false
+This solution enables Elasticsearch to run but
+
+introduces performance implications such as
+reduced I/O performance, as without memory
+
+
+Query Type Score
+
+Snippet (with URL)
+
+match_query 21.066
+
+20.764
+
+20.744
+
+20.568
+
+20.368
+
+Halt Die Fresse "Halt die Fresse!" Dann halt die Fresse. Was machen die da. Halt Die Fresse
+nicht buchen. - Halt die fresse! Namensraume Artikel Diskussion. (https://neocarla.com/a
+ktuelle-nachrichten-welt/halt-die-fresse. php)
+
+Daraus folgt: Halt die Fresse! Antwort: Halt die Fresse! Halt die Fresse! - Stimmt tatsichlich,
+echt schénes Wetter heute! Schénen Tag noch! Antwort: Halt die Fresse! Halt die Fresse! Halt
+die Fresse! - Ja, ich weiB. Sie hat mir heute davon erzahlt, aber sie war davon nicht so begeistert.
+(http: //kamelopedia.net/wiki/Halt_die_Fresse)
+
+Das war wie ein Schlag in die Fresse. Nur halt ins Herz. wie ein schlag in die fresse, nur ins herz
+-.- Hauptschule: "Halt die Fresse!" Realschule: "Halt die Fresse!" Gymnasium Ware dein Herz
+geborchen, warst du Tot. Also halt die Fresse! Junge: Ach H Starrt sie auf dein Mund dann kiiss
+sie.. HALT DIE FRESSE ICH HOR AUF Irgendwann schlag ich Dir in die Fresse. Versprochen!
+3D (https: //www. spruchmonster . de/das-war-wie-ein-schlag-die-fresse-nur-hal
+t-ins-herz)
+
+Bewertung, Halt die Die Geschichte Rapper Toony, dessen Beitrag fiir Halt die Fresse man
+auch diese Informationen hilfreich. Halt die Fresse man. Halt Die Fresse Man Translations &
+Examples VideoOidorno - Halt die Fresse ich will saufen (Official Video) Halt Die Fresse Man
+Inhaltsverzeichnis VideoHDF Halt Die Fresse Man "Halt die Fresse!" (https: //ebony-anal.
+com/syrien-nachrichten/halt-die-fresse-man. php)
+HDF, Halt die FresseHalt deine Fresse. Mir kamen Tranen in die Augen und er meinte nur Halt
+die Fresse und 3. Juni 2015. Einen Beutel mit dem Aufdruck Halt die Fresse verschicken Sie mit
+Sticker und Konfetti. (http: //arrestmorning. live/halt-die-fresse-ich-liebe-dich/)
+
+match_phrase_query 20.990
+
+20.741
+
+20.344
+
+20.280
+
+20.016
+
+Ubersetzung im Kontext von "halt die Fresse" in Deutsch-Englisch von Reverso Context: Halt
+die Fresse, Jackie Boy. Halt Die Fresse "Halt die Fresse!" Als Halt Die Fresse - Navigation-
+smeniiAmazon Web Services Cloud Computing Dienste von Amazon. Halt Die Fresse nicht
+buchen. - Halt die fresse! (https: //neocarla.com/aktuelle-nachrichten-welt/halt-d
+ie-fresse.php)
+Daraus folgt: Halt die Fresse! Antwort: Halt die Fresse! Halt die Fresse! - Stimmt tatsichlich,
+echt schénes Wetter heute! Schénen Tag noch! Antwort: Halt die Fresse! Halt die Fresse! Halt
+die Fresse! - Ja, ich weiB. Sie hat mir heute davon erzahlt, aber sie war davon nicht so begeistert.
+(http: //kamelopedia.net/wiki/Halt_die_Fresse)
+Ubersetzung im Kontext von "halt die Fresse" in Deutsch-Englisch von Reverso Context: Halt
+die Fresse, Jackie Boy. Halt Die Fresse Man Translations & Examples VideoOidorno - Halt die
+Fresse ich will saufen (Official Video) Halt Die Fresse Man Inhaltsverzeichnis VideoHDF Halt
+Die Fresse Man "Halt die Fresse!" (https: //ebony-anal.com/syrien-nachrichten/hal
+t-die-fresse-man. php)
+
+Komm halt die Fresse FRUHER warst du ein guter Freund. sein; aber nein es heift ja Hauptschule:
+"Halt die Fresse!" Realschule: "Halt die Fresse!" (https: //www. spruchmonster .de/und-d
+u-sollst-ein-guter-freund-sein-und-immer-fuer-mich-da-gewessen-seinkomm-h
+alt-die-fresse)
+
+Tasse Ich bin der Boss - Halt die Fresse! Product.Nr. cup_kn_ibdb product description Tasse
+Knorkator "Ich bin der Boss - Halt die Fresse!" die Fresse! (https: //www. fantotal.de/en/k
+norkator-shop/jewelry/tasse-knorkator-ich-bin-der-boss-halt-die-fresse.ht
+ml)
+
+Table 5: Example of output of DEU index with ’halt die fresse’ query from WeaponizedWords. Top 5 hits per query
+type (cleaned snippets, URL at end of snippet).
+
+mapping, disk I/O operations become less efficient,
+potentially increasing query response times and
+indexing throughput limitations. There is also an
+increased memory usage, as alternative memory
+management strategies consume more RAM and
+scalability considerations, as these performance
+impacts may become more pronounced as data
+volume and concurrent operations increase.
+
+Containers launched on Clariden inherit envi-
+ronment variables from the host system, including
+JAVA_HOME, which may be set by system config-
+urations as pointing to cluster-managed Java in-
+stallations. This creates conflicts because Elastic-
+
+search bundles its own optimized OpenJDK distri-
+bution and the bundled JVM is specifically tuned
+for Elasticsearch’s performance characteristics, and
+the host Java installations may be incompatible
+with containerized Elasticsearch requirements.
+The conflict manifests as:
+warning: ignoring JAVA_HOME=/usr/
+1ib64/jvm/java-11-openjdk-11;
+using bundled JDK
+could not find java in JAVA_HOME at
+
+/usr/1ib64/jvm/java-11-openjdk
+-11/bin/java
+
+We resolve this by explicitly managing the Java
+environment within the container:
+
+
+Query Type Score
+
+Snippet (with URL)
+
+match_query 25.438
+
+25.437
+
+25.306
+
+25.301
+
+No, there’s clear evidence that the MMR (measles, mumps, rubella) vaccine does not cause autism.
+| vaccines (but not MMR), caused autism. | More recently, some parents have been concerned
+that too many vaccines given too soon might cause autism. (https: //www.babycenter .com/4
+@4_does-the-mmr-vaccine-put-my-child-at-greater-risk-for-autism_11518.bc)
+Many proponents of the idea that vaccines cause autism have a habit of shifting between
+variants of the autism / vaccine theory without a lot of thought | It seems that they don’t care
+about exactly how vaccines cause autism, as long as they do. | that is caused by vaccines.
+(http://www. aconversationonautism. com/Vaccines-and-Autism/Vaccines-Autism-G
+enerally/Logical-Problems-with-the-Arguments/Theory- Shifting)
+
+cause autism. | Brian Hooker PhD, linking vaccines as a plausible cause of autism. | in the cause
+of autism Dr. (http: //vaccinationdecisions.net/vaccines-and-autism/)
+
+The belief that vaccines cause autism is not just wrong, but damaging. | Also, the component in
+vaccines that is "causing autism," hasn’t been in vaccines since the 90s. | Furthermore, if you
+believe that vaccines cause autism, the only way a vaccine could cause autism is if the disease
+that the child is being vaccinated (http: //www. debate. org/opinions/are-vaccines-cau
+sing-autism)
+
+match_phrase_query 23.401
+
+23.196
+
+22.865
+
+22.754
+
+22.719
+
+Japanese Data Show Vaccines Cause Autism June 3, 2009 Just months following the US Court
+of Federal Claims rejection of the claim that the MMR vaccine causes autism, here you will see
+ata from formal peer refereed medical papers showing that vaccines caused autism in Japanese
+children and will be doing (http: //recoveringnicholas.com/2010/02/13/japanese-dat
+a-show-vaccines-cause-autism/)
+
+Does Thimerosal used in vaccines cause Autism? 2. Does the MMR vaccine cause autism? 3. |
+Does the combination of Thimerosal-containing vaccines and the MMR vaccine cause autism?
+(http: //spiriteddoula. blogspot .com/2009/02/vaccine-court-to-release-autis
+m-ruling. html)
+
+May 13, 2008 WASHINGTON (AP) — Parents claiming that childhood vaccines cause autism
+should not be rewarded by the courts when the scientific community | Court of Claims alleging
+that vaccines caused autism and other neurological problems in their children. | Lawyers for
+the families are presenting three different theories of how vaccines caused autism. (http:
+//www. infowars.com/families-make-case-for-vaccine-link-to-autism/)
+
+Do Vaccines Cause Autism? Our crack team of scienticians have investigated. Read on for the
+full report. Q: Do vaccines cause autism? A: No. (http: //blog.westandfirm. org/2008/06
+/change-of-pace. html)
+
+The special "vaccine court" ruled yesterday, in three separate cases, each of which was testing
+a different strategy for claiming that vaccines cause autism | , that there was no evidence that
+vaccines caused autism in any of the cases. | The judges rule against the notion that MMR
+vaccine causes autism, and against the notion that thimerosal used as a preservative in vaccines
+causes autism (http: //genome. fieldofscience. com/2009/02/special-court-rules-t
+hat-vaccines-are. html)
+
+Table 6: Example of output of FineWeb-edu-score-2 index with "vaccines cause autism" query from misinformation
+dataset. Top 5 hits per query type (cleaned snippets, URL at end of snippet).
+
+unset JAVA_HOME
+
+export ES_JAVA_HOME="/usr/share/
+elasticsearch/jdk”
+
+Firstly, Elasticsearch requires specific network
+configuration to operate properly. In a basic
+
+This ensures Elasticsearch uses its bundled, tested setup, Elasticsearch uses two types of network
+
+JDK while avoiding conflicts with host system Java
+
+configurations.
+
+4.2 Networking settings
+
+When implementing Elasticsearch within container-
+ized environments on the CSCS Alps Clariden clus-
+
+communication: the HTTP interface (default port
+9200) for client requests like searches and data
+ingestion, and the transport interface (default port
+9300-9400) for internal node-to-node commu-
+nication. Each node has two different network
+interfaces - clients send requests to Elasticsearch’s
+
+ter, to execute indexing and search operations , we REST APIs using its HTTP interface, while
+
+may encounter network binding configuration is-
+
+sues, such as the
+
+the transport interface is used for inter-node
+communication in multi-node clusters and for
+
+Connection error: HEAD http://localhost internal component coordination and specialized
+
+:9200/ [status:400]
+
+client connections even in single-node setups. By
+
+which bring forward the necessity to configure default, Elasticsearch binds only to ‘localhost‘
+
+specific host and port variables.
+
+(127.0.0.1), which means it cannot be accessed
+
+
+Query Score Snippet (with URL)
+Type
+match 28.392 What is a transtrender? Binary trans people expose "transtrenders" on Youtube. Transtrending is gatekeeping (https:
+//www.beyounetwork. org/articles/transtrending-what-it-means-and-how-it-harms)
+27.149 — Transtrenders never experience dysphoria or oppression, often identify as "otherkin." They are gender-conforming cisgender
+eople pretending to be transgender (https: //www.urbandictionary.com/author .php?author=transapple)
+26.210 Body dysphoria separates true transsexuals from "transtrenders." In the truscum worldview, true transsexuals deserve priority
+over transtrenders (https: //transblog. grieve-smith.com/2015/01/)
+25.143. Transtrend aims to contribute to well-functioning markets. Transtrend promotes balance between supply and demand (https:
+//www. transtrend.com/en/approach/responsible-investing/)
+25.085 A “transtrender" refers to a person who identifies as transgender because they think it’s cool to do so. There’s a lot of problematic
+
+implications that go with the term "transtrender." "Transtrender" is a word no person in this community should ever use or
+condone. (https: //letsqueerthingsup.com/2015/03/28/why- the-trans-community-needs- to-ban-the-word-tra
+nstrender-for-good/?like_comment=2496&_wpnonce=108d059f 06)
+
+match_phrase
+
+28.392
+
+27.149
+
+26.210
+
+25.143
+
+25.085
+
+What is a transtrender? Among (binary) trans people on Youtube, you can find reaction videos exposing "transtrenders" or
+video opinions on "transtrending". What binary trans people need to understand about transtrending Binary trans people need to
+understand that transtrending is gatekeeping (https: //www. beyounetwork. org/articles/transtrending-what-it-means
+-and-how-it-harms)
+Transtrenders never experience disphoria transphobia or opression, and often identify as "otherkin." Transtrenders are basically
+gender-onforming cisgender people pretending to be transgender and using different pronouns because they think it makes them
+(https: //www. urbandictionary.com/author.php?author=transapple)
+
+the word is adopted as a badge of pride by many people who espouse it), the feeling of body dysphoria separates the true
+transsexuals from the wannabe "transtrenders" truscum worldview, resources available for trans people are scarce, and the true
+transsexuals with their medical condition deserve priority over the transtrenders (https: //transblog.grieve-smith.com/2
+@15/01/
+
+Thawstrend aims to contribute to well-functioning, well-organized and reliable markets. Transtrend — and its clients — must
+therefore be prepared to take risks. Transtrend aims to promote a healthy balance between supply and demand. (https:
+//www. transtrend.com/en/approach/responsible-investing/)
+
+A "transtrender" refers to a person who identifies as transgender because they think it’s cool to do so. There’s a lot of problematic
+implications that go with the term "transtrender." "Transtrender" is a word no person in this community should ever use or
+condone. (https: //letsqueerthingsup.com/2015/03/28/why- the-trans-community-needs- to-ban-the-word-tra
+nstrender-for-good/?like_comment=2496&_wpnonce=108d059f 06)
+
+fuzzy
+
+22.905
+
+21.260
+
+20.861
+
+20.717
+
+20.139
+
+Trans people who long for the days where transition and dysphoria were treated seriously have coined these new invaders
+as "transtrenders," with the implication These new additions seem to only cause confusion amongst the general public who
+historically have viewed transgenderism as indicative of a gender transition (https: //thepostmillennial.com/transtrend
+er-craze-trans-people)
+Transtrend aims to contribute to well-functioning, well-organized and reliable markets. Transtrend — and its clients — must
+therefore be prepared to take risks. Transtrend aims to promote a healthy balance between supply and demand. (https:
+//www. transtrend.com/en/approach/responsible-investing/)
+
+transgender issues extensively, also looks at mental health issues in the bisexual and transger communities, and contains
+information on bisexuality and transgernderism and particularly the common ground between the bisexual and transgender
+communities (http: //www. pinktherapy. com/en-gb/knowledge/bisexual . aspx)
+
+transgender issues extensively, also looks at mental health issues in the bisexual and transger communities, and contains
+information on bisexuality and transgernderism and particularly the common ground between the bisexual and transgender
+
+communities (http: //www. pinktherapy. com/en-gb/knowledge/bisexual . aspx)
+That being said, pretending to be a female is unlikely a sexual strategy due to a very low prevalence rate of transgenderism of
+
+0,001% Many transgenders appear to use the protected class status of transgenderism as a means of status ascension (transtrender)
+(https: //incels.wiki/w/Sneaker_male)
+
+bool_must
+
+56.784
+
+54.298
+
+52.420
+
+50.286
+
+50.170
+
+What is a transtrender? Among (binary) trans people on Youtube, you can find reaction videos exposing "transtrenders" or
+video opinions on "transtrending". What binary trans people need to understand about transtrending Binary trans people need to
+understand that transtrending is gatekeeping (https: //www. beyounetwork. org/articles/transtrending-what-it-means
+-and-how-it-harms)
+Transtrenders never experience disphoria transphobia or opression, and often identify as "otherkin." Transtrenders are basically
+gender-onforming cisgender people pretending to be transgender and using different pronouns because they think it makes them
+(https: //www.urbandictionary.com/author.php?author=transapple)
+
+the word is adopted as a badge of pride by many people who espouse it), the feeling of body dysphoria separates the true
+transsexuals from the wannabe "transtrenders" truscum worldview, resources available for trans people are scarce, and the true
+transsexuals with their medical condition deserve priority over the transtrenders (https: //transblog.grieve-smith.com/2
+
+Q@15/01/
+‘Transtrend aims to contribute to well-functioning, well-organized and reliable markets. Transtrend — and its clients — must
+therefore be prepared to take risks. Transtrend aims to promote a healthy balance between supply and demand. (https:
+//www. transtrend.com/en/approach/responsible-investing/)
+
+A "transtrender" refers to a person who identifies as transgender because they think it’s cool to do so. There’s a lot of problematic
+implications that go with the term "transtrender." "Transtrender" is a word no person in this community should ever use or
+condone. (https: //letsqueerthingsup.com/2015/03/28/why- the-trans-community-needs- to-ban-the-word-tra
+nstrender-for-good/?like_comment=2496&_wpnonce=108d059f 06)
+
+Table 7: Example of output of FineWeb-edu-score-2 index with ’transtrenders’ query from WeaponizedWords. Top
+5 hits per query type (cleaned snippets, URL at end of snippet)
+
+remotely - this is a security feature. patibility with Elasticsearch’s default networking
+
+behavior, manifested as
+Connection error: HEAD http://localhost
+
+This HPC architecture creates a critical incom- :9200/ [status:400]
+
+
+The error occurs perhaps because Alps
+compute nodes route HTTP traffic through
+proxy.cscs.ch:8080. The proxy may intercept
+localhost requests and add headers incompatible
+with Elasticsearch’s REST API, despite localhost
+being in the noproxy list. This issue can happen for
+a variety of different reasons (container networking
+complications, application level proxy settings,
+namespace ambiguity), but further investigation
+is required to clarify exactly the cause of this
+misbehavior, which is why this point is being
+clarified with CSCS engineers as of the moment of
+the report writing.
+
+The solution requires explicit network configu-
+ration that bypasses the proxy and forces localhost-
+only binding: first, configure proxy bypass with:
+
+export no_proxy="${no_proxy
+},127.0.0.1, localhost”
+export http_proxy="""
+
+and use ~curl --noproxy "127.0.0.1""
+for all local API calls
+
+second, explicitly bind all Elasticsearch network
+interfaces to localhost using:
+-E network. host=127.0.0.1
+-E http.host=127.0.0.1
+-E transport.host=127.0.0.1
+
+-E network. bind_host=127.0.0.1
+-E network. publish_host=127.0.0.1
+
+and third, disable cluster discovery with:
+
+-E discovery. type=single-node
+
+To comply with SLURM’s job isolation model.
+This configuration is architecturally mandated by
+the intersection of Alps’ proxy-mediated network-
+ing and SLURM’s resource management, making
+it the only viable approach for successful Elastic-
+search deployment in this specialized HPC environ-
+ment.
+
+4.3. Future directions in technical deployment
+
+The current Elasticsearch implementation is lim-
+ited to single-node clusters (discovery.type=single-
+node) which prevents horizontal scaling across
+SLURM’s multi-node allocations and_signifi-
+cantly constrains indexing performance. To op-
+timize for SLURM workloads, the cluster setup
+should leverage SLURM environment variables
+like SLURM_NODELIST and SLURM_JOB_NODELIST
+to automatically configure proper cluster discovery
+with seed hosts, enabling true distributed index-
+ing. Additionally, the numerous scattered Elas-
+ticsearch configuration parameters throughout the
+
+scripts should be consolidated into a centralized en-
+vironment variable management system that can dy-
+namically tune heap sizes, thread pools, and buffer
+settings based on SLURM resource allocations
+(SLURM_MEM_PER_NODE, SLURM_CPUS_PER_TASK).
+This would transform the current single-node bot-
+tleneck into a scalable, SLURM-native distributed
+Elasticsearch cluster capable of parallel indexing
+across multiple compute nodes.
+
+5 Comparison to other methods
+
+Bloom filters may offer a significantly improve-
+ment in indexing speed compared to ES, as among
+other factors they do not build any complex struc-
+tures, just bit arrays. However, they present severe
+limitations in their search capabilities: they can
+only perform membership testing, quickly resolv-
+ing if a term definitely doesn’t exist in a dataset
+(no false negatives) or might exist (possible false
+positives). They are therefore extremely memory-
+efficient for large text corpora but are only use-
+ful when one needs a fast "does this term appear
+anywhere?" check. They have no storage of the
+document IDs, the term positions, frequencies, or
+actual content. Consequently, they cannot resolve
+questions such as: which documents contain the
+term?, where in documents do these terms appear?,
+how many times do these terms occur (ranking and
+frequency information), are there any term rela-
+tionships or proximity? (phrase matching) and so
+on.
+
+Infinigram is a Burrow-Wheeler Transform-
+based method, based on the order permutation to
+create an implicit pointer-based index. It gener-
+ally enablew fast substring and n-gram matching
+across massive text corpora using pure lexical pat-
+tern matching, without any semantic understanding
+or meaning-based search capabilities. It operates
+solely on exact character sequences and n-gram
+patterns without supporting boolean operators like
+AND, OR, or NOT. In comparison, ElasticSearch
+has the capability to implement semantic-search
+and complex boolean queries that allow for a wider
+variety of search operations.
+
+References
+
+Marah Abdin, Jyoti Aneja, Hany Awadalla, Ahmed
+Awadallah, Ammar Ahmad Awan, Nguyen Bach,
+Amit Bahree, Arash Bakhtiari, Jianmin Bao, Harkirat
+Behl, Alon Benhaim, Misha Bilenko, Johan Bjorck,
+Sébastien Bubeck, Martin Cai, Qin Cai, Vishrav
+
+
+Chaudhary, Dong Chen, Dongdong Chen, Weizhu
+Chen, Yen-Chun Chen, Yi-Ling Chen, Hao Cheng,
+Parul Chopra, Xiyang Dai, Matthew Dixon, Ro-
+nen Eldan, Victor Fragoso, Jianfeng Gao, Mei Gao,
+Min Gao, Amit Garg, Allie Del Giorno, Abhishek
+Goswami, Suriya Gunasekar, Emman Haider, Jun-
+heng Hao, Russell J. Hewett, Wenxiang Hu, Jamie
+Huynh, Dan Iter, Sam Ade Jacobs, Mojan Javaheripi,
+Xin Jin, Nikos Karampatziakis, Piero Kauffmann,
+Mahoud Khademi, Dongwoo Kim, Young Jin Kim,
+Lev Kurilenko, James R. Lee, Yin Tat Lee, Yuanzhi
+Li, Yunsheng Li, Chen Liang, Lars Liden, Xihui
+Lin, Zeqi Lin, Ce Liu, Liyuan Liu, Mengchen Liu,
+Weishung Liu, Xiaodong Liu, Chong Luo, Piyush
+Madan, Ali Mahmoudzadeh, David Majercak, Matt
+Mazzola, Caio César Teodoro Mendes, Arindam Mi-
+tra, Hardik Modi, Anh Nguyen, Brandon Norick,
+Barun Patra, Daniel Perez-Becker, Thomas Portet,
+Reid Pryzant, Heyang Qin, Marko Radmilac, Liliang
+Ren, Gustavo de Rosa, Corby Rosset, Sambudha Roy,
+Olatunji Ruwase, Olli Saarikivi, Amin Saied, Adil
+Salim, Michael Santacroce, Shital Shah, Ning Shang,
+Hiteshi Sharma, Yelong Shen, Swadheen Shukla, Xia
+Song, Masahiro Tanaka, Andrea Tupini, Praneetha
+Vaddamanu, Chunyu Wang, Guanhua Wang, Lijuan
+Wang, Shuohang Wang, Xin Wang, Yu Wang, Rachel
+Ward, Wen Wen, Philipp Witte, Haiping Wu, Xiaoxia
+Wu, Michael Wyatt, Bin Xiao, Can Xu, Jiahang Xu,
+Weijian Xu, Jilong Xue, Sonali Yadav, Fan Yang,
+Jianwei Yang, Yifan Yang, Ziyi Yang, Donghan Yu,
+Lu Yuan, Chenruidong Zhang, Cyril Zhang, Jianwen
+Zhang, Li Lyna Zhang, Yi Zhang, Yue Zhang, Yunan
+Zhang, and Xiren Zhou. 2024. Phi-3 technical report:
+A highly capable language model locally on your
+phone.
+
+Stefan Baack. 2024. A critical analysis of the largest
+source for generative ai training data: Common crawl.
+pages 2199-2208.
+
+Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie
+Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+Askell, Sandhini Agarwal, Ariel Herbert-Voss,
+Gretchen Krueger, Tom Henighan, Rewon Child,
+Aditya Ramesh, Daniel M. Ziegler, Jeffrey Wu,
+Clemens Winter, Christopher Hesse, Mark Chen, Eric
+Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess,
+Jack Clark, Christopher Berner, Sam McCandlish,
+Alec Radford, Ilya Sutskever, and Dario Amodei.
+2020. Language models are few-shot learners.
+
+Sébastien Bubeck, Varun Chandrasekaran, Ronen El-
+dan, Johannes Gehrke, Eric Horvitz, Ece Kamar, Pe-
+ter Lee, Yin Tat Lee, Yuanzhi Li, Scott Lundberg,
+Harsha Nori, Hamid Palangi, Marco Tulio Ribeiro,
+and Yi Zhang. 2023. Sparks of artificial general in-
+telligence: Early experiments with gpt-4.
+
+Nicholas Carlini, Florian Tramer, Eric Wallace,
+Matthew Jagielski, Ariel Herbert-Voss, Katherine
+Lee, Adam Roberts, Tom Brown, Dawn Song, UI-
+far Erlingsson, Alina Oprea, and Colin Raffel. 2021.
+Extracting training data from large language models.
+
+Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri,
+Abhinav Pandey, Abhishek Kadian, Ahmad Al-
+Dahle, Aiesha Letman, Akhil Mathur, Alan Schel-
+ten, Alex Vaughan, Amy Yang, Angela Fan, Anirudh
+Goyal, Anthony Hartshorn, Aobo Yang, Archi Mi-
+tra, Archie Sravankumar, Artem Korenev, Arthur
+Hinsvark, Arun Rao, Aston Zhang, Aurelien Ro-
+driguez, Austen Gregerson, Ava Spataru, Baptiste
+Roziere, Bethany Biron, Binh Tang, Bobbie Chern,
+Charlotte Caucheteux, Chaya Nayak, Chloe Bi,
+Chris Marra, Chris McConnell, Christian Keller,
+Christophe Touret, Chunyang Wu, Corinne Wong,
+Cristian Canton Ferrer, Cyrus Nikolaidis, Damien Al-
+lonsius, Daniel Song, Danielle Pintz, Danny Livshits,
+Danny Wyatt, David Esiobu, Dhruv Choudhary,
+Dhruv Mahajan, Diego Garcia-Olano, Diego Perino,
+Dieuwke Hupkes, Egor Lakomkin, Ehab AlBadawy,
+Elina Lobanova, Emily Dinan, Eric Michael Smith,
+Filip Radenovic, Francisco Guzman, Frank Zhang,
+Gabriel Synnaeve, Gabrielle Lee, Georgia Lewis An-
+derson, Govind Thattai, Graeme Nail, Gregoire Mi-
+alon, Guan Pang, Guillem Cucurell, Hailey Nguyen,
+Hannah Korevaar, Hu Xu, Hugo Touvron, [liyan
+Zarov, Imanol Arrieta Ibarra, Isabel Kloumann, Is-
+han Misra, Ivan Evtimov, Jack Zhang, Jade Copet,
+Jaewon Lee, Jan Geffert, Jana Vranes, Jason Park,
+Jay Mahadeokar, Jeet Shah, Jelmer van der Linde,
+Jennifer Billock, Jenny Hong, Jenya Lee, Jeremy Fu,
+Jianfeng Chi, Jianyu Huang, Jiawen Liu, Jie Wang,
+Jiecao Yu, Joanna Bitton, Joe Spisak, Jongsoo Park,
+Joseph Rocca, Joshua Johnstun, Joshua Saxe, Jun-
+teng Jia, Kalyan Vasuden Alwala, Karthik Prasad,
+Kartikeya Upasani, Kate Plawiak, Ke Li, Kenneth
+Heafield, Kevin Stone, Khalid El-Arini, Krithika Iyer,
+Kshitiz Malik, Kuenley Chiu, Kunal Bhalla, Kushal
+Lakhotia, Lauren Rantala-Yeary, Laurens van der
+Maaten, Lawrence Chen, Liang Tan, Liz Jenkins,
+Louis Martin, Lovish Madaan, Lubo Malo, Lukas
+Blecher, Lukas Landzaat, Luke de Oliveira, Madeline
+Muzzi, Mahesh Pasupuleti, Mannat Singh, Manohar
+Paluri, Marcin Kardas, Maria Tsimpoukelli, Mathew
+Oldham, Mathieu Rita, Maya Pavlova, Melanie Kam-
+badur, Mike Lewis, Min Si, Mitesh Kumar Singh,
+Mona Hassan, Naman Goyal, Narjes Torabi, Niko-
+lay Bashlykov, Nikolay Bogoychev, Niladri Chatterji,
+Ning Zhang, Olivier Duchenne, Onur Celebi, Patrick
+Alrassy, Pengchuan Zhang, Pengwei Li, Petar Va-
+sic, Peter Weng, Prajjwal Bhargava, Pratik Dubal,
+Praveen Krishnan, Punit Singh Koura, Puxin Xu,
+Qing He, Qingxiao Dong, Ragavan Srinivasan, Raj
+Ganapathy, Ramon Calderer, Ricardo Silveira Cabral,
+Robert Stojnic, Roberta Raileanu, Rohan Maheswari,
+Rohit Girdhar, Rohit Patel, Romain Sauvestre, Ron-
+nie Polidoro, Roshan Sumbaly, Ross Taylor, Ruan
+Silva, Rui Hou, Rui Wang, Saghar Hosseini, Sa-
+hana Chennabasappa, Sanjay Singh, Sean Bell, Seo-
+hyun Sonia Kim, Sergey Edunov, Shaoliang Nie, Sha-
+ran Narang, Sharath Raparthy, Sheng Shen, Shengye
+Wan, Shruti Bhosale, Shun Zhang, Simon Van-
+denhende, Soumya Batra, Spencer Whitman, Sten
+Sootla, Stephane Collot, Suchin Gururangan, Syd-
+ney Borodinsky, Tamar Herman, Tara Fowler, Tarek
+Sheasha, Thomas Georgiou, Thomas Scialom, Tobias
+
+
+Speckbacher, Todor Mihaylov, Tong Xiao, Ujjwal
+Karn, Vedanuj Goswami, Vibhor Gupta, Vignesh
+Ramanathan, Viktor Kerkez, Vincent Gonguet, Vir-
+ginie Do, Vish Vogeti, Vitor Albiero, Vladan Petro-
+vic, Weiwei Chu, Wenhan Xiong, Wenyin Fu, Whit-
+ney Meers, Xavier Martinet, Xiaodong Wang, Xi-
+aofang Wang, Xiaoqing Ellen Tan, Xide Xia, Xin-
+feng Xie, Xuchao Jia, Xuewei Wang, Yaelle Gold-
+schlag, Yashesh Gaur, Yasmine Babaei, Yi Wen,
+Yiwen Song, Yuchen Zhang, Yue Li, Yuning Mao,
+Zacharie Delpierre Coudert, Zheng Yan, Zhengxing
+Chen, Zoe Papakipos, Aaditya Singh, Aayushi Sri-
+vastava, Abha Jain, Adam Kelsey, Adam Shajnfeld,
+Adithya Gangidi, Adolfo Victoria, Ahuva Goldstand,
+Ajay Menon, Ajay Sharma, Alex Boesenberg, Alexei
+Baevski, Allie Feinstein, Amanda Kallet, Amit San-
+gani, Amos Teo, Anam Yunus, Andrei Lupu, An-
+dres Alvarado, Andrew Caples, Andrew Gu, Andrew
+Ho, Andrew Poulton, Andrew Ryan, Ankit Ramchan-
+dani, Annie Dong, Annie Franco, Anuj Goyal, Apara-
+jita Saraf, Arkabandhu Chowdhury, Ashley Gabriel,
+Ashwin Bharambe, Assaf Eisenman, Azadeh Yaz-
+dan, Beau James, Ben Maurer, Benjamin Leonhardi,
+Bernie Huang, Beth Loyd, Beto De Paola, Bhargavi
+Paranjape, Bing Liu, Bo Wu, Boyu Ni, Braden Han-
+cock, Bram Wasti, Brandon Spence, Brani Stojkovic,
+Brian Gamido, Britt Montalvo, Carl Parker, Carly
+Burton, Catalina Mejia, Ce Liu, Changhan Wang,
+Changkyu Kim, Chao Zhou, Chester Hu, Ching-
+Hsiang Chu, Chris Cai, Chris Tindal, Christoph Fe-
+ichtenhofer, Cynthia Gao, Damon Civin, Dana Beaty,
+Daniel Kreymer, Daniel Li, David Adkins, David
+Xu, Davide Testuggine, Delia David, Devi Parikh,
+Diana Liskovich, Didem Foss, Dingkang Wang, Duc
+Le, Dustin Holland, Edward Dowling, Eissa Jamil,
+Elaine Montgomery, Eleonora Presani, Emily Hahn,
+Emily Wood, Eric-Tuan Le, Erik Brinkman, Este-
+ban Arcaute, Evan Dunbar, Evan Smothers, Fei Sun,
+Felix Kreuk, Feng Tian, Filippos Kokkinos, Firat
+Ozgenel, Francesco Caggioni, Frank Kanayet, Frank
+Seide, Gabriela Medina Florez, Gabriella Schwarz,
+Gada Badeer, Georgia Swee, Gil Halpern, Grant
+Herman, Grigory Sizov, Guangyi, Zhang, Guna
+Lakshminarayanan, Hakan Inan, Hamid Shojanaz-
+eri, Han Zou, Hannah Wang, Hanwen Zha, Haroun
+Habeeb, Harrison Rudolph, Helen Suk, Henry As-
+pegren, Hunter Goldman, Hongyuan Zhan, Ibrahim
+Damlaj, Igor Molybog, Igor Tufanoy, Ilias Leontiadis,
+Trina-Elena Veliche, Itai Gat, Jake Weissman, James
+Geboski, James Kohli, Janice Lam, Japhet Asher,
+Jean-Baptiste Gaya, Jeff Marcus, Jeff Tang, Jen-
+nifer Chan, Jenny Zhen, Jeremy Reizenstein, Jeremy
+Teboul, Jessica Zhong, Jian Jin, Jingyi Yang, Joe
+Cummings, Jon Carvill, Jon Shepard, Jonathan Mc-
+Phie, Jonathan Torres, Josh Ginsburg, Junjie Wang,
+Kai Wu, Kam Hou U, Karan Saxena, Kartikay Khan-
+delwal, Katayoun Zand, Kathy Matosich, Kaushik
+Veeraraghavan, Kelly Michelena, Keqian Li, Ki-
+ran Jagadeesh, Kun Huang, Kunal Chawla, Kyle
+Huang, Lailin Chen, Lakshya Garg, Lavender A,
+Leandro Silva, Lee Bell, Lei Zhang, Liangpeng
+Guo, Licheng Yu, Liron Moshkovich, Luca Wehrst-
+edt, Madian Khabsa, Manav Avalani, Manish Bhatt,
+
+Martynas Mankus, Matan Hasson, Matthew Lennie,
+Matthias Reso, Maxim Groshev, Maxim Naumov,
+Maya Lathi, Meghan Keneally, Miao Liu, Michael L.
+Seltzer, Michal Valko, Michelle Restrepo, Mihir Pa-
+tel, Mik Vyatskov, Mikayel Samvelyan, Mike Clark,
+Mike Macey, Mike Wang, Miquel Jubert Hermoso,
+Mo Metanat, Mohammad Rastegari, Munish Bansal,
+Nandhini Santhanam, Natascha Parks, Natasha
+White, Navyata Bawa, Nayan Singhal, Nick Egebo,
+Nicolas Usunier, Nikhil Mehta, Nikolay Pavlovich
+Laptev, Ning Dong, Norman Cheng, Oleg Chernoguz,
+Olivia Hart, Omkar Salpekar, Ozlem Kalinli, Parkin
+Kent, Parth Parekh, Paul Saab, Pavan Balaji, Pe-
+dro Rittner, Philip Bontrager, Pierre Roux, Piotr
+Dollar, Polina Zvyagina, Prashant Ratanchandani,
+Pritish Yuvraj, Qian Liang, Rachad Alao, Rachel
+Rodriguez, Rafi Ayub, Raghotham Murthy, Raghu
+Nayani, Rahul Mitra, Rangaprabhu Parthasarathy,
+Raymond Li, Rebekkah Hogan, Robin Battey, Rocky
+Wang, Russ Howes, Ruty Rinott, Sachin Mehta,
+Sachin Siby, Sai Jayesh Bondu, Samyak Datta, Sara
+Chugh, Sara Hunt, Sargun Dhillon, Sasha Sidorov,
+Satadru Pan, Saurabh Mahajan, Saurabh Verma,
+Seiji Yamamoto, Sharadh Ramaswamy, Shaun Lind-
+say, Shaun Lindsay, Sheng Feng, Shenghao Lin,
+Shengxin Cindy Zha, Shishir Patil, Shiva Shankar,
+Shuqiang Zhang, Shugqiang Zhang, Sinong Wang,
+Sneha Agarwal, Soji Sajuyigbe, Soumith Chintala,
+Stephanie Max, Stephen Chen, Steve Kehoe, Steve
+Satterfield, Sudarshan Govindaprasad, Sumit Gupta,
+Summer Deng, Sungmin Cho, Sunny Virk, Suraj
+Subramanian, Sy Choudhury, Sydney Goldman, Tal
+Remez, Tamar Glaser, Tamara Best, Thilo Koehler,
+Thomas Robinson, Tianhe Li, Tianjun Zhang, Tim
+Matthews, Timothy Chou, Tzook Shaked, Varun
+Vontimitta, Victoria Ajayi, Victoria Montanez, Vijai
+Mohan, Vinay Satish Kumar, Vishal Mangla, Vlad
+Jonescu, Vlad Poenaru, Vlad Tiberiu Mihailescu,
+Vladimir Ivanov, Wei Li, Wenchen Wang, Wen-
+wen Jiang, Wes Bouaziz, Will Constable, Xiaocheng
+Tang, Xiaojian Wu, Xiaolan Wang, Xilun Wu, Xinbo
+Gao, Yaniv Kleinman, Yanjun Chen, Ye Hu, Ye Jia,
+Ye Qi, Yenda Li, Yilin Zhang, Ying Zhang, Yossi Adi,
+Youngjin Nam, Yu, Wang, Yu Zhao, Yuchen Hao,
+Yundi Qian, Yunlu Li, Yuzi He, Zach Rait, Zachary
+DeVito, Zef Rosnbrick, Zhaoduo Wen, Zhenyu Yang,
+Zhiwei Zhao, and Zhiyu Ma. 2024. The llama 3 herd
+of models.
+
+Alexandra Luccioni and Joseph Viviano. 2021. What’s
+in the box? an analysis of undesirable content in the
+Common Crawl corpus. In Proceedings of the 59th
+Annual Meeting of the Association for Computational
+Linguistics and the 11th International Joint Confer-
+ence on Natural Language Processing (Volume 2:
+Short Papers), pages 182-189, Online. Association
+for Computational Linguistics.
+
+Sai Krishna Mendu, Harish Yenala, Aditi Gulati, Shanu
+Kumar, and Parag Agrawal. 2025. Towards safer
+pretraining: Analyzing and filtering harmful content
+in webscale datasets for responsible Ilms.
+
+Guilherme Penedo, Hynek Kydliéek, Loubna Ben al-
+
+
+lal, Anton Lozhkov, Margaret Mitchell, Colin Raffel,
+Leandro Von Werra, and Thomas Wolf. 2024. The
+fineweb datasets: Decanting the web for the finest
+text data at scale.
+
+Colin Raffel, Noam Shazeer, Adam Roberts, Kather-
+ine Lee, Sharan Narang, Michael Matena, Yanqi
+Zhou, Wei Li, and Peter J. Liu. 2020. Exploring the
+limits of transfer learning with a unified text-to-text
+transformer. Journal of Machine Learning Research,
+21(140):1-67.
+
+Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+Martinet, Marie-Anne Lachaux, Timothée Lacroix,
+Baptiste Roziére, Naman Goyal, Eric Hambro, Faisal
+Azhar, Aurelien Rodriguez, Armand Joulin, Edouard
+Grave, and Guillaume Lample. 2023. Llama: Open
+and efficient foundation language models.
+
+
