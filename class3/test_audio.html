@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Upload Audio Query and Get Response</title>
+</head>
+<body>
+  <h2>Upload Audio and Get Response Audio</h2>
+
+  <div id="msg">
+    <p>Please record your question then send audio to hear response:</p>
+    <p>you can chat with system for maximum 5 times and then it will reset.</p>
+  </div>  
+
+  <div>  
+    <button id="recordBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+    <form id="audioForm">
+      <input type="hidden" id="audioData" name="audioData">
+      <button type="submit">Send Audio</button>
+    </form>
+  </div>
+
+  <div id="responseMsg">waiting... </div>
+  <div id="audioPlayer"></div>
+
+
+<script>
+
+let mediaRecorder;
+let audioChunks = [];
+let recordedAudioBlob = null;
+const responseMsgDiv = document.getElementById('responseMsg');
+
+
+document.getElementById('recordBtn').onclick = async function() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  audioChunks = [];
+  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+  mediaRecorder.onstop = () => {
+    recordedAudioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      document.getElementById('audioData').value = reader.result;
+    };
+    reader.readAsDataURL(recordedAudioBlob); // Convert to base64 for sending
+  };
+  mediaRecorder.start();
+  document.getElementById('recordBtn').disabled = true;
+  document.getElementById('stopBtn').disabled = false;
+};
+
+document.getElementById('stopBtn').onclick = function() {
+  mediaRecorder.stop();
+  document.getElementById('recordBtn').disabled = false;
+  document.getElementById('stopBtn').disabled = true;
+};
+
+document.getElementById('audioForm').onsubmit = async function(e) {
+
+  e.preventDefault();
+  const formData = new FormData();
+  formData.append('file', recordedAudioBlob, 'audio.wav'); // <-- Use the recorded blob
+
+  responseMsgDiv.innerText = "Sending request...";
+
+  const response = await fetch('http://localhost:8000/chat/', {
+    method: 'POST',
+    body: formData
+  });
+
+  if (response.ok) {
+    
+    responseMsgDiv.innerText = " Got it: ";
+    const audioBlob = await response.blob(); // <-- This line is needed!
+    const audioUrl = URL.createObjectURL(audioBlob);
+
+    // Create audio element to play response
+    let responseAudio = document.getElementById('responseAudio');
+    const audioPlayerDiv = document.getElementById('audioPlayer');
+
+    if (!responseAudio) {
+      responseAudio = document.createElement('audio');
+      responseAudio.id = 'responseAudio';
+      responseAudio.controls = true;
+      audioPlayerDiv.appendChild(responseAudio);
+    }
+    responseAudio.src = audioUrl;
+    
+  } else {
+    alert('Error: ' + response.status);
+    responseMsgDiv.innerText = "Error: " + response.status;
+  }
+};
+
+</script>
+</body>
