@@ -43,8 +43,9 @@ def remove_repetitive_ngrams(text: str, n: int = 3) -> str:
     words = text.split()
     seen_ngrams = set()
     cleaned_words = []
-    stats["total_tokens"] = len(words)
+    
     for i in range(len(words) - n + 1):
+        stats["total_tokens"] += 1
         ngram = ' '.join(words[i:i+n])
         if ngram in seen_ngrams:
             stats["removed_repetitive_ngrams"] += 1
