@@ -1,16 +1,3 @@
-
-
-#=================== libraries installed ========================
-#downloads required for langchain needed:
-# pip3 install -U langchain-community
-# pip3 install pypdf
-# pip3 install --upgrade langchain langchain-core langchain-community langchain-openai langchain-experimental chromadb
-# pip3 install openai
-# pip3 install faiss-cpu -->Mac accepted faiss-cpu only
-# pip3 install sentence-transformers
-# pip3 install PyMuPDF
-#pip3 install faiss-cpu
-
 from langchain.document_loaders import PyPDFLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings
@@ -19,20 +6,17 @@ from langchain.chains import RetrievalQA
 from langchain.llms import OpenAI
 import os
 from sentence_transformers import SentenceTransformer
+from cleaner import cleanup_data
 
 #===================set env file =====================
 
 from dotenv import load_dotenv, find_dotenv
-#load_dotenv() #--> this setting to load OPENAI_API_KEY into code
-# Create a `.env` file in your project root with this format:
-# OPENAI_API_KEY=sk-...your real key...
 
 _env_path = find_dotenv(usecwd=True)
 load_dotenv(_env_path, override=True)
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key or api_key.startswith("YOUR_") or api_key.strip() == "":
     raise RuntimeError(f"OPENAI_API_KEY missing or placeholder. Ensure a valid key is set in your .env (loaded from: {_env_path or 'not found'}).")
-os.environ["OPENAI_API_KEY"] = api_key
 
 
 #================ Embeding and build Faiss Index =============================
@@ -76,6 +60,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     pages = []
     for page in doc:
         page_text = page.get_text()  # get raw content from page
+        page_text = cleanup_data(page_text) # clean up the raw content
         pages.append(page_text)
     full_text = "\n".join(pages)
     return full_text
@@ -155,6 +140,7 @@ def search(request: QueryRequest):
     return {"query": request.query, "results": results}
 
 
+#============ extract clean text from stored pdf folder and build FAISS index ============
 def process_pretraining_data():
 
     """
@@ -168,9 +154,28 @@ def process_pretraining_data():
         all_chunks.extend(chunks)
         index_metadata.extend([(filename, chunk) for chunk in chunks])
 
+
+    # Create embeddings and build FAISS index
     embeddings = model.encode(all_chunks, show_progress_bar=True)
     global faiss_index
     faiss_index = build_faiss_index(embeddings)
+
+    # ========= below code for class4 homework use only =========
+    #save trunks in json file for debug purpose
+    # import json
+    # with open("all_chunks.json", "w") as f:
+    #     json.dump(index_metadata, f, indent=2)
+    # print("Total chunks:", len(all_chunks))
+
+    # Save FAISS index to file for homework use
+    #faiss.write_index(faiss_index, "faiss.index")
+
+    # import pickle
+    # # (Optional) Save metadata (e.g., original documents) for later retrieval
+    # with open("metadata.pkl", "wb") as f:
+    #     pickle.dump(all_chunks, f)
+
+    #print("FAISS index and metadata saved.")
 
 
 if __name__ == "__main__":
