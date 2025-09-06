@@ -1,14 +1,4 @@
 
-#=================== libraries installed ========================
-#downloads required for langchain needed:
-# pip3 install -U langchain-community
-# pip3 install pypdf
-# pip3 install --upgrade langchain langchain-core langchain-community langchain-openai langchain-experimental chromadb
-# pip3 install openai
-# pip3 install faiss-cpu -->Mac accepted faiss-cpu only
-# pip3 install sentence-transformers
-# pip3 install PyMuPDF
-
 from xml.dom.minidom import Document
 from langchain.document_loaders import PyPDFLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -19,20 +9,17 @@ from langchain.llms import OpenAI
 import os
 from sentence_transformers import SentenceTransformer
 import sqlite_crud
+from cleaner import cleanup_data
 
 #===================set env file =====================
 
 from dotenv import get_key, load_dotenv, find_dotenv
-#load_dotenv() #--> this setting to load OPENAI_API_KEY into code
-# Create a `.env` file in your project root with this format:
-# OPENAI_API_KEY=sk-...your real key...
 
 _env_path = find_dotenv(usecwd=True)
 load_dotenv(_env_path, override=True)
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key or api_key.startswith("YOUR_") or api_key.strip() == "":
     raise RuntimeError(f"OPENAI_API_KEY missing or placeholder. Ensure a valid key is set in your .env (loaded from: {_env_path or 'not found'}).")
-os.environ["OPENAI_API_KEY"] = api_key
 
 
 #================ Embeding and build Faiss Index =============================
@@ -86,10 +73,10 @@ def extract_raw_text_from_pdf(pdf_path: str, doc: Document) -> str:
     pages = []
     for page in doc:
         page_text = page.get_text()  # get raw content from page
+        page_text = cleanup_data(page_text) # clean up the raw content
         pages.append(page_text)
     full_text = "\n".join(pages)
     return full_text
-
 
 #=================== Chunking ========================
 
@@ -153,7 +140,7 @@ def fts_search_index(query: str) -> list[dict[str, str]]:
 
 #=================== Hybrid search =======================
 
-def hybrid_score(vec_score, key_score, alpha=0.5)-> list[dict[str, str]]:
+def hybrid_score(vec_score, key_score, alpha=0.5)-> float:
     # Assume vec_score and key_score are normalized (0-1).
     hybrid_score = alpha * vec_score + (1 - alpha) * key_score
     #print(f"Hybrid score (vec: {vec_score}, key: {key_score}): {hybrid_score}")
@@ -236,12 +223,9 @@ async def hybrid_search(request: QueryRequest, k: int = 3):
     return {"query": request.query, "results": results}
 
 
-
+#========= Preprocess stored pdf data and build sqlite/faiss search index ==========
 def process_pretraining_data():
 
-    """
-    Extract text from a PDF file.
-    """
     pdfs = load_pdfs_from_folder(pdf_path)
 
     #chunk pdf texts and saved into all_chunks and sqlite respectively
@@ -253,7 +237,7 @@ def process_pretraining_data():
         all_chunks.extend(chunks)
         sqlite_crud.insert_data(idx, title, author, year, keywords, chunks)
     
-    #build index
+    #build faiss index
     global faiss_index
     faiss_index = build_faiss_index()
 
