@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Send Search Query via POST</title>
+</head>
+<body>
+  <h2>Search Query to Server</h2>
+  <form id="searchForm">
+    <input type="text" id="searchInput" name="query" placeholder="Enter your search query" required style="width: 600px;">
+    <button type="submit">Send</button>
+  </form>
+  <div id="msg">Please enter your query above.</div>
+  <div id="results"></div>
+
+  <script>
+    const searchForm = document.getElementById('searchForm');
+    const searchInput = document.getElementById('searchInput');
+    const msgDiv = document.getElementById('msg');
+    const resultsDiv = document.getElementById('results');
+
+    searchForm.onsubmit = async function(e) {
+      e.preventDefault();
+      msgDiv.innerText = "Sending request...";
+
+      const query = searchInput.value;
+      const payload = { query: query };
+
+      const response = await fetch('http://127.0.0.1:8000/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      
+
+      if (response.ok) {
+        //msgDiv.innerText = "Processing response..." + response.getElementById("results").innerText;
+        const data = await response.json();
+        msgDiv.innerText = "Response received!" + JSON.stringify(data.results, null, 2);
+        resultsDiv.innerText = JSON.stringify(data.results, null, 2);
+
+          // If you want to display each result separately:
+        resultsDiv.innerHTML = "";
+        data.results.forEach((item, idx) => {
+          resultsDiv.innerHTML += `<div>Result ${idx + 1}: ${item}</div>`;
+        });
+      } else {
+        msgDiv.innerText = "Error: " + response.status;
+        resultsDiv.innerText = "";
+      }
+    };
+  </script>
+</body>
+</html>
